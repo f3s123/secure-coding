@@ -3,6 +3,10 @@
 {% block content %}
 <h2>프로필</h2>
 
+<!-- 사용자 정보 -->
+<p><strong>이름 :</strong> {{ user['username'] }}</p>
+<p><strong>소개글 :</strong> {{ user['bio'] }}</p>
+
 <!-- 자기소개 업데이트 -->
 <form method="post" autocomplete="off">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

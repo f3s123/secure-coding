@@ -47,7 +47,9 @@ def init_db():
                 username TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
                 bio TEXT,
-                role TEXT DEFAULT 'user'
+                role TEXT DEFAULT 'user',
+                is_suspended INTEGER DEFAULT 0,
+                report_count INTEGER DEFAULT 0
             )
         """)
 
@@ -301,6 +303,18 @@ def profile():
 def new_product():
     if 'user_id' not in session:
         return redirect(url_for('login'))
+
+    db = get_db()
+    cursor = db.cursor()
+
+    # 현재 사용자 정보 확인
+    cursor.execute("SELECT is_suspended FROM user WHERE id = ?", (session['user_id'],))
+    user = cursor.fetchone()
+
+    if user['is_suspended']:
+        flash('휴면 계정 상태에서는 상품을 등록할 수 없습니다.')
+        return redirect(url_for('profile'))
+
     if request.method == 'POST':
         title = escape(request.form['title']).strip()
         description = escape(request.form['description']).strip()
@@ -318,8 +332,6 @@ def new_product():
             flash('유효하지 않은 상품 정보입니다.')
             return redirect(url_for('new_product'))
 
-        db = get_db()
-        cursor = db.cursor()
         product_id = str(uuid.uuid4())
         cursor.execute(
             "INSERT INTO product (id, title, description, price, seller_id) VALUES (?, ?, ?, ?, ?)",
@@ -386,60 +398,121 @@ def view_product(product_id):
 def report():
     if 'user_id' not in session:
         return redirect(url_for('login'))
+
+    db = get_db()
+    cursor = db.cursor()
+
     if request.method == 'POST':
-        target_title = escape(request.form['target_title']).strip()
+        report_type = request.form.get('report_type')  # 'product' 또는 'user'
         reason = escape(request.form['reason']).strip()
 
-        if not target_title or not reason:
-            flash('상품 제목과 신고 사유를 모두 입력해주세요.')
-            return redirect(url_for('report'))
+        if report_type == 'product':
+            target_title = escape(request.form['target_title']).strip()
 
-        db = get_db()
-        cursor = db.cursor()
+            if not target_title or not reason:
+                flash('상품 제목과 신고 사유를 모두 입력해주세요.')
+                return redirect(url_for('report'))
 
-        # 상품 제목으로 상품 ID 조회
-        cursor.execute("SELECT id, report_count FROM product WHERE title = ?", (target_title,))
-        product = cursor.fetchone()
+            # 상품 신고 처리 로직 (기존 코드 유지)
+            cursor.execute("SELECT id, report_count FROM product WHERE title = ?", (target_title,))
+            product = cursor.fetchone()
 
-        if not product:
-            flash('해당 제목의 상품을 찾을 수 없습니다.')
-            return redirect(url_for('report'))
+            if not product:
+                flash('해당 제목의 상품을 찾을 수 없습니다.')
+                return redirect(url_for('report'))
 
-        target_id = product['id']
-        report_count = product['report_count']
+            target_id = product['id']
+            report_count = product['report_count']
 
-        # 동일 사용자의 중복 신고 여부 확인
-        cursor.execute(
-            "SELECT * FROM report WHERE reporter_id = ? AND target_id = ?",
-            (session['user_id'], target_id)
-        )
-        existing_report = cursor.fetchone()
+            # 동일 사용자의 중복 신고 여부 확인
+            cursor.execute(
+                "SELECT * FROM report WHERE reporter_id = ? AND target_id = ?",
+                (session['user_id'], target_id)
+            )
+            existing_report = cursor.fetchone()
 
-        if existing_report:
-            flash('이미 해당 상품을 신고하셨습니다.')
-            return redirect(url_for('report'))
+            if existing_report:
+                flash('이미 해당 상품을 신고하셨습니다.')
+                return redirect(url_for('report'))
 
-        # 신고 데이터 삽입
-        report_id = str(uuid.uuid4())
-        cursor.execute(
-            "INSERT INTO report (id, reporter_id, target_id, reason) VALUES (?, ?, ?, ?)",
-            (report_id, session['user_id'], target_id, reason)
-        )
+            # 신고 데이터 삽입
+            report_id = str(uuid.uuid4())
+            cursor.execute(
+                "INSERT INTO report (id, reporter_id, target_id, reason) VALUES (?, ?, ?, ?)",
+                (report_id, session['user_id'], target_id, reason)
+            )
 
-        # 신고당한 상품의 report_count 증가
-        cursor.execute(
-            "UPDATE product SET report_count = report_count + 1 WHERE id = ?",
-            (target_id,)
-        )
+            # 신고당한 상품의 report_count 증가
+            cursor.execute(
+                "UPDATE product SET report_count = report_count + 1 WHERE id = ?",
+                (target_id,)
+            )
 
-        # 신고 횟수가 3회를 초과하면 상품 삭제
-        if report_count + 1 > 3:
-            cursor.execute("DELETE FROM product WHERE id = ?", (target_id,))
-            db.commit()
-            flash('상품이 신고 횟수 초과로 삭제되었습니다.')
-        else:
-            db.commit()
-            flash('신고가 접수되었습니다.')
+            # 신고 횟수가 3회를 초과하면 상품 삭제
+            if report_count + 1 > 3:
+                cursor.execute("DELETE FROM product WHERE id = ?", (target_id,))
+                db.commit()
+                flash('상품이 신고 횟수 초과로 삭제되었습니다.')
+            else:
+                db.commit()
+                flash('신고가 접수되었습니다.')
+
+        elif report_type == 'user':
+            target_username = escape(request.form['target_username']).strip()
+
+            if not target_username or not reason:
+                flash('사용자명과 신고 사유를 모두 입력해주세요.')
+                return redirect(url_for('report'))
+
+            # 사용자 신고 처리 로직
+            cursor.execute("SELECT id, role, is_suspended, report_count FROM user WHERE username = ?", (target_username,))
+            user = cursor.fetchone()
+
+            if not user:
+                flash('해당 사용자를 찾을 수 없습니다.')
+                return redirect(url_for('report'))
+
+            # 관리자인 경우 신고 차단
+            if user['role'] == 'admin':
+                flash('관리자는 신고할 수 없습니다.')
+                return redirect(url_for('report'))
+
+            target_id = user['id']
+            is_suspended = user['is_suspended']
+            report_count = user['report_count']
+
+            # 동일 사용자의 중복 신고 여부 확인
+            cursor.execute(
+                "SELECT * FROM report WHERE reporter_id = ? AND target_id = ?",
+                (session['user_id'], target_id)
+            )
+            existing_report = cursor.fetchone()
+
+            if existing_report:
+                flash('이미 해당 사용자를 신고하셨습니다.')
+                return redirect(url_for('report'))
+
+            # 신고 데이터 삽입
+            report_id = str(uuid.uuid4())
+            cursor.execute(
+                "INSERT INTO report (id, reporter_id, target_id, reason) VALUES (?, ?, ?, ?)",
+                (report_id, session['user_id'], target_id, reason)
+            )
+
+            # 신고당한 유저의 신고 횟수 증가
+            cursor.execute(
+                "UPDATE user SET report_count = report_count + 1 WHERE id = ?",
+                (target_id,)
+            )
+
+            # 신고 횟수가 3회를 초과하면 계정을 휴면 상태로 전환
+            if report_count + 1 > 3 and not is_suspended:
+                cursor.execute("UPDATE user SET is_suspended = 1 WHERE id = ?", (target_id,))
+                db.commit()
+                flash('해당 사용자가 신고 횟수 초과로 휴면 계정이 되었습니다.')
+            else:
+                db.commit()
+                flash('신고가 접수되었습니다.')
 
         return redirect(url_for('dashboard'))
     return render_template('report.html')
