@@ -172,21 +172,50 @@ def logout():
     return redirect(url_for('index'))
 
 # 대시보드: 사용자 정보와 전체 상품 리스트 표시
-@app.route('/dashboard')
+@app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
     if 'user_id' not in session:
         return redirect(url_for('login'))
+
     db = get_db()
     cursor = db.cursor()
+
     # 현재 사용자 조회
     cursor.execute("SELECT * FROM user WHERE id = ?", (session['user_id'],))
     current_user = cursor.fetchone()
+
+    search_results = []
+    if request.method == 'POST' and 'search_query' in request.form:
+        search_query = escape(request.form['search_query']).strip()
+
+        # 서버 측 검색어 길이 검증
+        if len(search_query) == 0:
+            flash('검색어를 입력해주세요.')
+            return redirect(url_for('dashboard'))
+        if len(search_query) > 30:
+            flash('검색어는 최대 30자까지 입력 가능합니다.')
+            return redirect(url_for('dashboard'))
+
+        # 검색 수행
+        search_query = f"%{search_query}%"
+        cursor.execute(
+            "SELECT * FROM product WHERE title LIKE ? OR description LIKE ?",
+            (search_query, search_query)
+        )
+        search_results = cursor.fetchall()
+
     # 모든 상품 조회
     cursor.execute("SELECT * FROM product")
     all_products = cursor.fetchall()
-    return render_template('dashboard.html', products=all_products, user=current_user)
 
-# 프로필 페이지: bio 업데이트 가능
+    return render_template(
+        'dashboard.html',
+        user=current_user,
+        products=all_products,
+        search_results=search_results
+    )
+
+# 프로필 페이지
 @app.route('/profile', methods=['GET', 'POST'])
 def profile():
     if 'user_id' not in session:
@@ -288,6 +317,22 @@ def profile():
                 flash('사용자가 삭제되었습니다.')
             else:
                 flash('권한이 없습니다.')
+
+        elif 'suspend_user_id' in request.form:
+            # 관리자: 사용자 휴면 계정 설정/해제
+            suspend_user_id = request.form.get('suspend_user_id')
+            cursor.execute("SELECT is_suspended FROM user WHERE id = ?", (suspend_user_id,))
+            user = cursor.fetchone()
+            if user:
+                new_status = 0 if user['is_suspended'] else 1
+                cursor.execute("UPDATE user SET is_suspended = ? WHERE id = ?", (new_status, suspend_user_id))
+                db.commit()
+                if new_status == 1:
+                    flash('사용자가 휴면 계정으로 설정되었습니다.')
+                else:
+                    flash('사용자의 휴면 계정이 해제되었습니다.')
+            else:
+                flash('사용자를 찾을 수 없습니다.')
 
     return render_template(
         'profile.html',

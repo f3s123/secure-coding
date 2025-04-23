@@ -71,8 +71,23 @@
 
 {% if searched_user %}
 <h3>검색 결과</h3>
-<p>사용자명: {{ searched_user['username'] }}</p>
-<p>자기소개: {{ searched_user['bio'] }}</p>
+<p><strong>사용자명:</strong> {{ searched_user['username'] }}</p>
+<p><strong>소개글:</strong> {{ searched_user['bio'] }}</p>
+<p><strong>휴면 계정 상태:</strong> {{ '휴면 계정' if searched_user['is_suspended'] else '활성 계정' }}</p>
+
+<form method="post" style="display:inline;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="suspend_user_id" value="{{ searched_user['id'] }}">
+  <button type="submit">
+    {{ '휴면 계정 해제' if searched_user['is_suspended'] else '휴면 계정 설정' }}
+  </button>
+</form>
+
+<form method="post" style="display:inline;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="delete_user_id" value="{{ searched_user['id'] }}">
+  <button type="submit" onclick="return confirm('정말로 삭제하시겠습니까?')">삭제</button>
+</form>
 <h4>등록한 상품</h4>
 <ul>
   {% for product in searched_products %}
