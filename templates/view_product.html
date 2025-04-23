@@ -1,20 +1,26 @@
 {% extends "base.html" %}
 {% block title %}상품 상세보기{% endblock %}
 {% block content %}
-<h2>{{ product.title | e }}</h2>
+<h2>{{ product['title'] }}</h2>
+<p>가격: {{ product['price'] }}원</p>
+<p>설명: {{ product['description'] }}</p>
+<p>판매자: {{ seller['username'] }}</p>
 
-<div>
-  <strong>설명:</strong>
-  <p>{{ product.description | e }}</p>
-</div>
+{% if is_owner %}
+<hr>
+<h3>상품 수정</h3>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label for="title">제목:</label><br>
+  <input type="text" id="title" name="title" value="{{ product['title'] }}" required maxlength="30"><br><br>
 
-<div>
-  <strong>가격:</strong>
-  <p>{{ product.price | e }}원</p>
-</div>
+  <label for="description">설명:</label><br>
+  <textarea id="description" name="description" rows="4" cols="50" required maxlength="200">{{ product['description'] }}</textarea><br><br>
 
-<div>
-  <strong>판매자:</strong>
-  <p>{{ seller.username | e if seller else '판매자 정보를 확인할 수 없습니다.' }}</p>
-</div>
+  <label for="price">가격:</label><br>
+  <input type="text" id="price" name="price" value="{{ product['price'] }}" required><br><br>
+
+  <button type="submit">수정</button>
+</form>
+{% endif %}
 {% endblock %}

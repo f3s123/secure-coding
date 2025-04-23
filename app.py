@@ -199,9 +199,15 @@ def profile():
     searched_user = None
     searched_products = []
 
-    # 사용자가 등록한 상품 조회
-    cursor.execute("SELECT * FROM product WHERE seller_id = ?", (session['user_id'],))
-    user_products = cursor.fetchall()
+    # 관리자 계정인지 확인
+    if current_user['role'] == 'admin':
+        # 관리자: 모든 상품 조회
+        cursor.execute("SELECT * FROM product")
+        user_products = cursor.fetchall()
+    else:
+        # 일반 사용자: 본인이 등록한 상품만 조회
+        cursor.execute("SELECT * FROM product WHERE seller_id = ?", (session['user_id'],))
+        user_products = cursor.fetchall()
 
     if request.method == 'POST':
         if 'bio' in request.form:
@@ -300,6 +306,14 @@ def new_product():
         description = escape(request.form['description']).strip()
         price = escape(request.form['price']).strip()
 
+        # 제목과 설명 길이 제한
+        if len(title) > 30:
+            flash('제목은 최대 30자까지 입력 가능합니다.')
+            return redirect(url_for('new_product'))
+        if len(description) > 200:
+            flash('설명은 최대 200자까지 입력 가능합니다.')
+            return redirect(url_for('new_product'))
+
         if not title or not description or not re.match(r'^\d+(\.\d{1,2})?$', price):
             flash('유효하지 않은 상품 정보입니다.')
             return redirect(url_for('new_product'))
@@ -317,19 +331,55 @@ def new_product():
     return render_template('new_product.html')
 
 # 상품 상세보기
-@app.route('/product/<product_id>')
+@app.route('/product/<product_id>', methods=['GET', 'POST'])
 def view_product(product_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
     db = get_db()
     cursor = db.cursor()
+
+    # 상품 정보 조회
     cursor.execute("SELECT * FROM product WHERE id = ?", (product_id,))
     product = cursor.fetchone()
     if not product:
         flash('상품을 찾을 수 없습니다.')
         return redirect(url_for('dashboard'))
+
     # 판매자 정보 조회
     cursor.execute("SELECT * FROM user WHERE id = ?", (product['seller_id'],))
     seller = cursor.fetchone()
-    return render_template('view_product.html', product=product, seller=seller)
+
+    # 본인의 상품인지 확인
+    is_owner = session['user_id'] == product['seller_id']
+
+    if request.method == 'POST' and is_owner:
+        # 상품 수정 처리
+        title = escape(request.form['title']).strip()
+        description = escape(request.form['description']).strip()
+        price = escape(request.form['price']).strip()
+
+        # 제목과 설명 길이 제한
+        if len(title) > 30:
+            flash('제목은 최대 30자까지 입력 가능합니다.')
+            return redirect(url_for('view_product', product_id=product_id))
+        if len(description) > 200:
+            flash('설명은 최대 200자까지 입력 가능합니다.')
+            return redirect(url_for('view_product', product_id=product_id))
+
+        if not title or not description or not re.match(r'^\d+(\.\d{1,2})?$', price):
+            flash('유효하지 않은 상품 정보입니다.')
+            return redirect(url_for('view_product', product_id=product_id))
+
+        cursor.execute(
+            "UPDATE product SET title = ?, description = ?, price = ? WHERE id = ?",
+            (title, description, price, product_id)
+        )
+        db.commit()
+        flash('상품이 수정되었습니다.')
+        return redirect(url_for('view_product', product_id=product_id))
+
+    return render_template('view_product.html', product=product, seller=seller, is_owner=is_owner)
 
 # 신고하기
 @app.route('/report', methods=['GET', 'POST'])

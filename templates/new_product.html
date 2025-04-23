@@ -17,10 +17,10 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
   <label for="title">제목</label>
-  <input type="text" id="title" name="title" placeholder="상품 제목" required maxlength="100">
+  <input type="text" id="title" name="title" placeholder="상품 제목" required maxlength="30">
 
   <label for="description">설명</label>
-  <textarea id="description" name="description" rows="4" placeholder="상품 설명" required maxlength="1000"></textarea>
+  <textarea id="description" name="description" rows="4" placeholder="상품 설명" required maxlength="200"></textarea>
 
   <label for="price">가격 (숫자만 입력)</label>
   <input type="text" id="price" name="price" placeholder="예: 10000" pattern="^\d+$" required maxlength="10">
