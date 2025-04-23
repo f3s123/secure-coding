@@ -7,6 +7,8 @@ from datetime import timedelta
 import bcrypt
 import time
 from markupsafe import escape
+import re
+import html
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
@@ -56,7 +58,8 @@ def init_db():
                 title TEXT NOT NULL,
                 description TEXT NOT NULL,
                 price TEXT NOT NULL,
-                seller_id TEXT NOT NULL
+                seller_id TEXT NOT NULL,
+                report_count INTEGER DEFAULT 0 
             )
         """)
 
@@ -95,8 +98,19 @@ def index():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form['username']
-        raw_password = request.form['password']
+        username = html.escape(request.form['username'].strip())
+        raw_password = request.form['password'].strip()
+
+        # 사용자명 유효성 검사: 4~20자, 영문/숫자/밑줄(_)
+        if not re.match(r'^[a-zA-Z0-9_]{4,20}$', username):
+            flash('사용자명은 4~20자이며, 영문/숫자/밑줄(_)만 허용됩니다.')
+            return redirect(url_for('register'))
+
+        # 비밀번호 유효성 검사: 6~32자
+        if not re.match(r'^[a-zA-Z0-9!@#$%^&*()_+={}\[\]:;"\'<>,.?/\\|-]{6,32}$', raw_password):
+            flash('비밀번호는 6~32자이며, 영문/숫자/특수문자 조합만 허용됩니다.')
+            return redirect(url_for('register'))
+
         hashed_password = bcrypt.hashpw(raw_password.encode('utf-8'), bcrypt.gensalt())
 
         db = get_db()
@@ -185,6 +199,10 @@ def profile():
     searched_user = None
     searched_products = []
 
+    # 사용자가 등록한 상품 조회
+    cursor.execute("SELECT * FROM product WHERE seller_id = ?", (session['user_id'],))
+    user_products = cursor.fetchall()
+
     if request.method == 'POST':
         if 'bio' in request.form:
             bio = escape(request.form.get('bio', '').strip())
@@ -194,6 +212,49 @@ def profile():
                 cursor.execute("UPDATE user SET bio = ? WHERE id = ?", (bio, session['user_id']))
                 db.commit()
                 flash('프로필이 업데이트되었습니다.')
+            return redirect(url_for('profile'))
+        
+        elif 'delete_product_id' in request.form:
+            product_id = request.form['delete_product_id']
+
+            # 관리자 계정인지 확인
+            if current_user['role'] == 'admin':
+                # 관리자: 모든 상품 삭제 가능
+                cursor.execute("DELETE FROM product WHERE id = ?", (product_id,))
+                db.commit()
+                flash('상품이 삭제되었습니다.')
+            else:
+                # 일반 사용자: 본인이 등록한 상품만 삭제 가능
+                cursor.execute("SELECT * FROM product WHERE id = ? AND seller_id = ?", (product_id, session['user_id']))
+                product = cursor.fetchone()
+                if product:
+                    cursor.execute("DELETE FROM product WHERE id = ?", (product_id,))
+                    db.commit()
+                    flash('상품이 삭제되었습니다.')
+                else:
+                    flash('삭제 권한이 없습니다.')
+            return redirect(url_for('profile'))
+
+        elif 'current_password' in request.form and 'new_password' in request.form:
+            # 비밀번호 변경 처리
+            current_password = request.form['current_password'].strip()
+            new_password = request.form['new_password'].strip()
+
+            # 현재 비밀번호 확인
+            if not bcrypt.checkpw(current_password.encode('utf-8'), current_user['password']):
+                flash('현재 비밀번호가 올바르지 않습니다.')
+                return redirect(url_for('profile'))
+
+            # 새 비밀번호 유효성 검사
+            if not re.match(r'^[a-zA-Z0-9!@#$%^&*()_+={}\[\]:;"\'<>,.?/\\|-]{6,32}$', new_password):
+                flash('새 비밀번호는 6~32자이며, 영문/숫자/특수문자 조합만 허용됩니다.')
+                return redirect(url_for('profile'))
+
+            # 새 비밀번호 해싱 및 저장
+            hashed_new_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+            cursor.execute("UPDATE user SET password = ? WHERE id = ?", (hashed_new_password, session['user_id']))
+            db.commit()
+            flash('비밀번호가 성공적으로 변경되었습니다.')
             return redirect(url_for('profile'))
 
         elif 'search_username' in request.form:
@@ -224,7 +285,8 @@ def profile():
         'profile.html',
         user=current_user,
         searched_user=searched_user,
-        searched_products=searched_products
+        searched_products=searched_products,
+        user_products=user_products
     )
 
 
@@ -275,20 +337,39 @@ def report():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     if request.method == 'POST':
-        target_id = request.form['target_id']
+        target_title = escape(request.form['target_title']).strip()
         reason = escape(request.form['reason']).strip()
 
-        if not reason:
-            flash('신고 사유를 입력해주세요.')
+        if not target_title or not reason:
+            flash('상품 제목과 신고 사유를 모두 입력해주세요.')
             return redirect(url_for('report'))
 
         db = get_db()
         cursor = db.cursor()
+
+        # 상품 제목으로 상품 ID 조회
+        cursor.execute("SELECT id FROM product WHERE title = ?", (target_title,))
+        product = cursor.fetchone()
+
+        if not product:
+            flash('해당 제목의 상품을 찾을 수 없습니다.')
+            return redirect(url_for('report'))
+
+        target_id = product['id']
+
+        # 신고 데이터 삽입
         report_id = str(uuid.uuid4())
         cursor.execute(
             "INSERT INTO report (id, reporter_id, target_id, reason) VALUES (?, ?, ?, ?)",
             (report_id, session['user_id'], target_id, reason)
         )
+
+        # 신고당한 상품의 report_count 증가
+        cursor.execute(
+            "UPDATE product SET report_count = report_count + 1 WHERE id = ?",
+            (target_id,)
+        )
+
         db.commit()
         flash('신고가 접수되었습니다.')
         return redirect(url_for('dashboard'))
