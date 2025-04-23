@@ -4,17 +4,21 @@
 <h2>프로필 관리</h2>
 <p>사용자명: {{ user.username }}</p>
 
-<form method="post">
-  소개글: <br>
-  <textarea name="bio" rows="4" cols="50">{{ user.bio or '' }}</textarea><br>
+<form method="post" autocomplete="off">
+  {{ csrf_token() }}
+  <input type="hidden" name="form_type" value="update_bio">
+  <label for="bio">소개글</label><br>
+  <textarea id="bio" name="bio" rows="4" cols="50" maxlength="500">{{ user.bio or '' }}</textarea><br>
   <button type="submit">프로필 업데이트</button>
 </form>
 
 <hr>
 
 <h3>사용자 검색</h3>
-<form method="post">
-  <input type="text" name="search_username" placeholder="사용자명 입력" required>
+<form method="post" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="form_type" value="search_user">
+  <input type="text" name="search_username" placeholder="사용자명 입력" required maxlength="50">
   <button type="submit">검색</button>
 </form>
 
@@ -26,6 +30,8 @@
 
     {% if user.role == 'admin' and searched_user.id != user.id %}
       <form method="post" onsubmit="return confirm('정말로 이 사용자를 삭제하시겠습니까?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="form_type" value="delete_user">
         <input type="hidden" name="delete_user_id" value="{{ searched_user.id }}">
         <button type="submit" style="color: red;">사용자 삭제</button>
       </form>

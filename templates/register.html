@@ -2,10 +2,16 @@
 {% block title %}회원가입{% endblock %}
 {% block content %}
 <h2>회원가입</h2>
-<form method="post">
-  {{ csrf_token() }}
-  사용자명: <input type="text" name="username" required><br>
-  비밀번호: <input type="password" name="password" required><br>
+<form method="post" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="form_type" value="register">
+
+  <label for="username">사용자명:</label>
+  <input type="text" id="username" name="username" required maxlength="30" pattern="[a-zA-Z0-9_]+" title="영문, 숫자, 밑줄(_)만 사용 가능"><br>
+
+  <label for="password">비밀번호:</label>
+  <input type="password" id="password" name="password" required minlength="8" maxlength="64" autocomplete="new-password"><br>
+
   <button type="submit">가입하기</button>
 </form>
 {% endblock %}

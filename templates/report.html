@@ -2,10 +2,18 @@
 {% block title %}신고하기{% endblock %}
 {% block content %}
 <h2>신고하기</h2>
-<form method="post">
-  신고 대상 (사용자ID 또는 상품ID): <input type="text" name="target_id" required><br>
-  신고 사유: <br>
-  <textarea name="reason" rows="4" cols="50" required></textarea><br>
+<form method="post" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="form_type" value="report">
+
+  <label for="target_id">신고 대상 (사용자ID 또는 상품ID):</label><br>
+  <input type="text" id="target_id" name="target_id" required maxlength="50" pattern="[a-zA-Z0-9_-]+"
+         title="영문, 숫자, 하이픈(-), 밑줄(_)만 입력 가능"><br><br>
+
+  <label for="reason">신고 사유:</label><br>
+  <textarea id="reason" name="reason" rows="4" cols="50" required maxlength="1000"
+            placeholder="신고 내용을 구체적으로 작성해주세요."></textarea><br><br>
+
   <button type="submit">신고 접수</button>
 </form>
 {% endblock %}
