@@ -398,7 +398,7 @@ def report():
         cursor = db.cursor()
 
         # 상품 제목으로 상품 ID 조회
-        cursor.execute("SELECT id FROM product WHERE title = ?", (target_title,))
+        cursor.execute("SELECT id, report_count FROM product WHERE title = ?", (target_title,))
         product = cursor.fetchone()
 
         if not product:
@@ -406,6 +406,18 @@ def report():
             return redirect(url_for('report'))
 
         target_id = product['id']
+        report_count = product['report_count']
+
+        # 동일 사용자의 중복 신고 여부 확인
+        cursor.execute(
+            "SELECT * FROM report WHERE reporter_id = ? AND target_id = ?",
+            (session['user_id'], target_id)
+        )
+        existing_report = cursor.fetchone()
+
+        if existing_report:
+            flash('이미 해당 상품을 신고하셨습니다.')
+            return redirect(url_for('report'))
 
         # 신고 데이터 삽입
         report_id = str(uuid.uuid4())
@@ -420,8 +432,15 @@ def report():
             (target_id,)
         )
 
-        db.commit()
-        flash('신고가 접수되었습니다.')
+        # 신고 횟수가 3회를 초과하면 상품 삭제
+        if report_count + 1 > 3:
+            cursor.execute("DELETE FROM product WHERE id = ?", (target_id,))
+            db.commit()
+            flash('상품이 신고 횟수 초과로 삭제되었습니다.')
+        else:
+            db.commit()
+            flash('신고가 접수되었습니다.')
+
         return redirect(url_for('dashboard'))
     return render_template('report.html')
 
