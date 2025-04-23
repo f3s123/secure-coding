@@ -3,9 +3,44 @@
 {% block content %}
 <h2>프로필 관리</h2>
 <p>사용자명: {{ user.username }}</p>
+
 <form method="post">
   소개글: <br>
   <textarea name="bio" rows="4" cols="50">{{ user.bio or '' }}</textarea><br>
   <button type="submit">프로필 업데이트</button>
 </form>
+
+<hr>
+
+<h3>사용자 검색</h3>
+<form method="post">
+  <input type="text" name="search_username" placeholder="사용자명 입력" required>
+  <button type="submit">검색</button>
+</form>
+
+{% if searched_user %}
+  <div style="margin-top: 1em; padding: 0.5em; border: 1px solid #ccc;">
+    <strong>검색 결과:</strong><br>
+    사용자명: {{ searched_user.username }}<br>
+    소개글: {{ searched_user.bio or '(없음)' }}<br>
+
+    {% if user.role == 'admin' and searched_user.id != user.id %}
+      <form method="post" onsubmit="return confirm('정말로 이 사용자를 삭제하시겠습니까?');">
+        <input type="hidden" name="delete_user_id" value="{{ searched_user.id }}">
+        <button type="submit" style="color: red;">사용자 삭제</button>
+      </form>
+    {% endif %}
+
+    <h4>등록된 상품들:</h4>
+    {% if searched_products %}
+      <ul>
+        {% for product in searched_products %}
+          <li><strong>{{ product.title }}</strong>: {{ product.description }} - {{ product.price }}원</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>등록된 상품이 없습니다.</p>
+    {% endif %}
+  </div>
+{% endif %}
 {% endblock %}
