@@ -76,7 +76,7 @@
     const input = document.getElementById('chat_input');
     const message = input.value.trim();
     if (message.length > 0) {
-      socket.emit('send_message', {
+      socket.emit('send_message_all', {
         'username': "{{ user.username|e }}",
         'message': message
       });

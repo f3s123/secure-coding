@@ -1,7 +1,7 @@
 import sqlite3
 import uuid
-from flask import Flask, render_template, request, redirect, url_for, session, flash, g
-from flask_socketio import SocketIO, send
+from flask import Flask, render_template, request, redirect, url_for, session, flash, g, abort
+from flask_socketio import SocketIO, send, emit, join_room, leave_room
 from flask_wtf.csrf import CSRFProtect
 from datetime import timedelta
 import bcrypt
@@ -72,6 +72,26 @@ def init_db():
                 reporter_id TEXT NOT NULL,
                 target_id TEXT NOT NULL,
                 reason TEXT NOT NULL
+            )
+        """)
+
+        # 채팅 메시지 테이블 생성
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS chat (
+                id TEXT PRIMARY KEY,
+                sender_id TEXT NOT NULL,
+                receiver_id TEXT NOT NULL,
+                message TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # 채팅 상대 목록 테이블 생성
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS chat_list (
+                user_id TEXT NOT NULL,
+                contact_id TEXT NOT NULL,
+                UNIQUE(user_id, contact_id)
             )
         """)
 
@@ -563,10 +583,171 @@ def report():
     return render_template('report.html')
 
 # 실시간 채팅: 클라이언트가 메시지를 보내면 전체 브로드캐스트
-@socketio.on('send_message')
+@socketio.on('send_message_all')
 def handle_send_message_event(data):
     data['message_id'] = str(uuid.uuid4())
     send(data, broadcast=True)
+
+@socketio.on('send_message')
+def handle_send_message(data):
+    sender_id = session['user_id']
+    receiver_id = data['receiver_id']
+    message = data['message']
+
+    # 데이터베이스에 메시지 저장
+    db = get_db()
+    cursor = db.cursor()
+    chat_id = str(uuid.uuid4())
+    cursor.execute("""
+        INSERT INTO chat (id, sender_id, receiver_id, message) 
+        VALUES (?, ?, ?, ?)
+    """, (chat_id, sender_id, receiver_id, message))
+    db.commit()
+
+    # 메시지를 수신자와 발신자에게 전송
+    emit('receive_message', {
+        'sender_id': sender_id,
+        'receiver_id': receiver_id,
+        'message': message,
+        'sender_username': data['sender_username']
+    }, room=receiver_id)
+    emit('receive_message', {
+        'sender_id': sender_id,
+        'receiver_id': receiver_id,
+        'message': message,
+        'sender_username': data['sender_username']
+    }, room=sender_id)
+
+# WebSocket 이벤트: 채팅방 참여
+@socketio.on('join_room')
+def handle_join_room(data):
+    room = data['room']
+    join_room(room)
+
+    # 이전 대화 기록 로드
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("""
+        SELECT sender_id, receiver_id, message, timestamp
+        FROM chat
+        WHERE (sender_id = ? AND receiver_id = ?)
+           OR (sender_id = ? AND receiver_id = ?)
+        ORDER BY timestamp ASC
+    """, (session['user_id'], room, room, session['user_id']))
+    chat_history = cursor.fetchall()
+
+    # 대화 기록을 클라이언트로 전송
+    emit('load_chat_history', {
+        'chat_history': [
+            {
+                'sender_id': row['sender_id'],
+                'receiver_id': row['receiver_id'],
+                'message': row['message'],
+                'timestamp': row['timestamp']
+            }
+            for row in chat_history
+        ]
+    }, room=request.sid)
+
+    # emit('status', {'msg': f"{session['user_id']}님이 방에 입장했습니다."}, room=room)
+
+# WebSocket 이벤트: 채팅방 나가기
+@socketio.on('leave_room')
+def handle_leave_room(data):
+    room = data['room']
+    leave_room(room)
+    # emit('status', {'msg': f"{session['user_id']}님이 방에서 나갔습니다."}, room=room)
+
+# 채팅 페이지
+@app.route('/chat', methods=['GET', 'POST'])
+def chat():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    db = get_db()
+    cursor = db.cursor()
+
+    # 현재 사용자 정보
+    cursor.execute("SELECT * FROM user WHERE id = ?", (session['user_id'],))
+    current_user = cursor.fetchone()
+
+    # 채팅 상대 목록 조회
+    cursor.execute("""
+        SELECT u.id, u.username 
+        FROM chat_list cl
+        JOIN user u ON cl.contact_id = u.id
+        WHERE cl.user_id = ?
+    """, (session['user_id'],))
+    chat_contacts = cursor.fetchall()
+
+    selected_contact = None
+    chat_messages = []
+
+    if request.method == 'POST':
+        if 'search_user' in request.form:
+            # 사용자 검색
+            search_username = escape(request.form['search_user']).strip()
+            cursor.execute("SELECT * FROM user WHERE username = ?", (search_username,))
+            selected_contact = cursor.fetchone()
+
+            if not selected_contact:
+                flash('해당 사용자를 찾을 수 없습니다.')
+            elif selected_contact['id'] == session['user_id']:
+                flash('자기 자신과는 채팅할 수 없습니다.')
+            else:
+                # 채팅 상대 목록에 추가
+                cursor.execute("""
+                    INSERT OR IGNORE INTO chat_list (user_id, contact_id) VALUES (?, ?)
+                """, (session['user_id'], selected_contact['id']))
+                cursor.execute("""
+                    INSERT OR IGNORE INTO chat_list (user_id, contact_id) VALUES (?, ?)
+                """, (selected_contact['id'], session['user_id']))
+                db.commit()
+
+        elif 'selected_contact_id' in request.form:
+            # 채팅 상대 선택
+            selected_contact_id = request.form['selected_contact_id']
+            cursor.execute("SELECT * FROM user WHERE id = ?", (selected_contact_id,))
+            selected_contact = cursor.fetchone()
+
+            # 채팅 메시지 조회
+            cursor.execute("""
+                SELECT * FROM chat 
+                WHERE (sender_id = ? AND receiver_id = ?)
+                   OR (sender_id = ? AND receiver_id = ?)
+                ORDER BY timestamp ASC
+            """, (session['user_id'], selected_contact_id, selected_contact_id, session['user_id']))
+            chat_messages = cursor.fetchall()
+
+        elif 'message' in request.form:
+            # 메시지 전송
+            message = escape(request.form['message']).strip()
+            receiver_id = request.form['receiver_id']
+
+            if message:
+                chat_id = str(uuid.uuid4())
+                cursor.execute("""
+                    INSERT INTO chat (id, sender_id, receiver_id, message) 
+                    VALUES (?, ?, ?, ?)
+                """, (chat_id, session['user_id'], receiver_id, message))
+                db.commit()
+
+                # 메시지 전송 후 채팅 메시지 갱신
+                cursor.execute("""
+                    SELECT * FROM chat 
+                    WHERE (sender_id = ? AND receiver_id = ?)
+                       OR (sender_id = ? AND receiver_id = ?)
+                    ORDER BY timestamp ASC
+                """, (session['user_id'], receiver_id, receiver_id, session['user_id']))
+                chat_messages = cursor.fetchall()
+
+    return render_template(
+        'chat.html',
+        user=current_user,
+        chat_contacts=chat_contacts,
+        selected_contact=selected_contact,
+        chat_messages=chat_messages
+    )
 
 @app.errorhandler(500)
 def internal_error(e):
@@ -576,6 +757,11 @@ def internal_error(e):
 def not_found(e):
     return render_template('404.html'), 404
 
+@app.errorhandler(403)
+def not_found(e):
+    return render_template('403.html'), 403
+
 if __name__ == '__main__':
     init_db()  # 앱 컨텍스트 내에서 테이블 생성
     socketio.run(app, debug=True)
+    # app.run(host='0.0.0.0', port=5001, debug=True)
