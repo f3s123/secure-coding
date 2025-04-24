@@ -604,18 +604,24 @@ def handle_send_message(data):
     """, (chat_id, sender_id, receiver_id, message))
     db.commit()
 
+    # 상대방의 이름 가져오기
+    cursor.execute("SELECT username FROM user WHERE id = ?", (receiver_id,))
+    receiver_username = cursor.fetchone()['username']
+
     # 메시지를 수신자와 발신자에게 전송
     emit('receive_message', {
         'sender_id': sender_id,
         'receiver_id': receiver_id,
         'message': message,
-        'sender_username': data['sender_username']
+        'sender_username': data['sender_username'],
+        'receiver_username': receiver_username
     }, room=receiver_id)
     emit('receive_message', {
         'sender_id': sender_id,
         'receiver_id': receiver_id,
         'message': message,
-        'sender_username': data['sender_username']
+        'sender_username': data['sender_username'],
+        'receiver_username': receiver_username
     }, room=sender_id)
 
 # WebSocket 이벤트: 채팅방 참여
@@ -636,6 +642,10 @@ def handle_join_room(data):
     """, (session['user_id'], room, room, session['user_id']))
     chat_history = cursor.fetchall()
 
+    # 상대방의 이름 가져오기
+    cursor.execute("SELECT username FROM user WHERE id = ?", (room,))
+    receiver_username = cursor.fetchone()['username']
+
     # 대화 기록을 클라이언트로 전송
     emit('load_chat_history', {
         'chat_history': [
@@ -643,7 +653,8 @@ def handle_join_room(data):
                 'sender_id': row['sender_id'],
                 'receiver_id': row['receiver_id'],
                 'message': row['message'],
-                'timestamp': row['timestamp']
+                'timestamp': row['timestamp'],
+                'receiver_username': receiver_username
             }
             for row in chat_history
         ]
@@ -764,4 +775,4 @@ def not_found(e):
 if __name__ == '__main__':
     init_db()  # 앱 컨텍스트 내에서 테이블 생성
     socketio.run(app, debug=True)
-    # app.run(host='0.0.0.0', port=5001, debug=True)
+    #app.run(host='0.0.0.0', port=5001, debug=True)

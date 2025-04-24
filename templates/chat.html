@@ -61,7 +61,7 @@
     const chatHistory = data.chat_history;
     chatHistory.forEach(chat => {
       const newMessage = document.createElement('p');
-      const sender = chat.sender_id === '{{ user["id"] }}' ? '나' : '{{ user["username"] }}';
+      const sender = chat.sender_id === '{{ user["id"] }}' ? '나' : chat.receiver_username;
       newMessage.innerHTML = `<strong>${sender}:</strong> ${chat.message}`;
       messagesDiv.appendChild(newMessage);
     });
