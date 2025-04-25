@@ -12,6 +12,9 @@
   <label for="password">비밀번호:</label>
   <input type="password" id="password" name="password" required minlength="8" maxlength="64" autocomplete="new-password"><br>
 
+  <label for="account_number">계좌번호:</label>
+  <input type="text" id="account_number" name="account_number" required pattern="\d{3}-\d{3,4}-\d{4}" title="계좌번호 형식: 123-456-7890 또는 123-4567-8900"><br>
+
   <button type="submit">가입하기</button>
 </form>
 {% endblock %}

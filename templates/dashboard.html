@@ -3,12 +3,17 @@
 {% block content %}
 <h2>대시보드</h2>
 
-<!-- 검색 폼 -->
+<!-- 상품 등록하기 버튼 -->
+<a href="{{ url_for('new_product') }}" class="btn btn-primary">상품 등록하기</a>
+
+<hr>
+
+<!-- 검색 -->
 <form method="post" autocomplete="off">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label for="search_query">상품 검색:</label>
   <input type="text" id="search_query" name="search_query" placeholder="검색어를 입력하세요" required maxlength="30">
-  <button type="submit">검색</button>
+  <button type="submit" class="btn btn-secondary">검색</button>
 </form>
 
 <hr>

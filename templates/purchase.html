@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}송금 정보{% endblock %}
+{% block content %}
+<h2>송금 정보</h2>
+
+<p><strong>상품명:</strong> {{ product['title'] }}</p>
+<p><strong>가격:</strong> {{ product['price'] }} 원</p>
+<p><strong>판매자:</strong> {{ seller['username'] }}</p>
+<p><strong>계좌번호:</strong> {{ seller['account_number'] }}</p>
+
+<hr>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="btn btn-primary">구매 완료</button>
+</form>
+
+<a href="{{ url_for('dashboard') }}" class="btn btn-secondary">돌아가기</a>
+{% endblock %}

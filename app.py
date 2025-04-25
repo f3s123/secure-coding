@@ -46,6 +46,7 @@ def init_db():
                 id TEXT PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
+                account_number TEXT, 
                 bio TEXT,
                 role TEXT DEFAULT 'user',
                 is_suspended INTEGER DEFAULT 0,
@@ -122,15 +123,21 @@ def register():
     if request.method == 'POST':
         username = html.escape(request.form['username'].strip())
         raw_password = request.form['password'].strip()
+        account_number = html.escape(request.form['account_number'].strip())
 
-        # 사용자명 유효성 검사: 4~20자, 영문/숫자/밑줄(_)
-        if not re.match(r'^[a-zA-Z0-9_]{4,20}$', username):
-            flash('사용자명은 4~20자이며, 영문/숫자/밑줄(_)만 허용됩니다.')
+        # 사용자명 유효성 검사
+        if not re.match(r'^[a-zA-Z0-9_]{4,30}$', username):
+            flash('사용자명은 4~30자이며, 영문/숫자/밑줄(_)만 허용됩니다.')
             return redirect(url_for('register'))
 
-        # 비밀번호 유효성 검사: 6~32자
-        if not re.match(r'^[a-zA-Z0-9!@#$%^&*()_+={}\[\]:;"\'<>,.?/\\|-]{6,32}$', raw_password):
-            flash('비밀번호는 6~32자이며, 영문/숫자/특수문자 조합만 허용됩니다.')
+        # 비밀번호 유효성 검사
+        if not re.match(r'^[a-zA-Z0-9!@#$%^&*()_+={}\[\]:;"\'<>,.?/\\|-]{8,64}$', raw_password):
+            flash('비밀번호는 8~64자이며, 영문/숫자/특수문자 조합만 허용됩니다.')
+            return redirect(url_for('register'))
+
+        # 계좌번호 유효성 검사
+        if not re.match(r'^\d{3}-\d{3,4}-\d{4}$', account_number):
+            flash('계좌번호 형식이 올바르지 않습니다. (예: 123-456-7890)')
             return redirect(url_for('register'))
 
         hashed_password = bcrypt.hashpw(raw_password.encode('utf-8'), bcrypt.gensalt())
@@ -143,8 +150,8 @@ def register():
             return redirect(url_for('register'))
 
         user_id = str(uuid.uuid4())
-        cursor.execute("INSERT INTO user (id, username, password) VALUES (?, ?, ?)",
-                       (user_id, username, hashed_password))
+        cursor.execute("INSERT INTO user (id, username, password, account_number) VALUES (?, ?, ?, ?)",
+                       (user_id, username, hashed_password, account_number))
         db.commit()
         flash('회원가입 완료. 로그인해주세요.')
         return redirect(url_for('login'))
@@ -339,6 +346,11 @@ def profile():
                 flash('권한이 없습니다.')
 
         elif 'suspend_user_id' in request.form:
+            # 관리자 권한 확인
+            if current_user['role'] != 'admin':
+                flash('권한이 없습니다.')
+                return redirect(url_for('profile'))
+
             # 관리자: 사용자 휴면 계정 설정/해제
             suspend_user_id = request.form.get('suspend_user_id')
             cursor.execute("SELECT is_suspended FROM user WHERE id = ?", (suspend_user_id,))
@@ -759,6 +771,45 @@ def chat():
         selected_contact=selected_contact,
         chat_messages=chat_messages
     )
+
+# 송금 정보 페이지
+@app.route('/purchase/<product_id>', methods=['GET', 'POST'])
+def purchase(product_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    db = get_db()
+    cursor = db.cursor()
+
+    # 상품 정보 조회
+    cursor.execute("SELECT * FROM product WHERE id = ?", (product_id,))
+    product = cursor.fetchone()
+    if not product:
+        flash('상품을 찾을 수 없습니다.')
+        return redirect(url_for('dashboard'))
+
+    # 본인의 상품인지 확인
+    if product['seller_id'] == session['user_id']:
+        flash('자신의 상품은 구매할 수 없습니다.')
+        return redirect(url_for('dashboard'))
+
+    # 판매자 정보 조회
+    cursor.execute("SELECT username, account_number FROM user WHERE id = ?", (product['seller_id'],))
+    seller = cursor.fetchone()
+    if not seller:
+        flash('판매자를 찾을 수 없습니다.')
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        # 구매 완료 처리 (필요 시 추가 로직 구현 가능)
+        flash('구매가 완료되었습니다.')
+        return redirect(url_for('dashboard'))
+
+    # 계좌번호를 그대로 전달
+    return render_template('purchase.html', product=product, seller={
+        'username': seller['username'],
+        'account_number': seller['account_number']
+    })
 
 @app.errorhandler(500)
 def internal_error(e):

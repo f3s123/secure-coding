@@ -75,6 +75,8 @@
 <p><strong>소개글:</strong> {{ searched_user['bio'] }}</p>
 <p><strong>휴면 계정 상태:</strong> {{ '휴면 계정' if searched_user['is_suspended'] else '활성 계정' }}</p>
 
+<!-- 관리자만 휴면 계정 설정/해제 및 삭제 버튼 표시 -->
+{% if user['role'] == 'admin' %}
 <form method="post" style="display:inline;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="suspend_user_id" value="{{ searched_user['id'] }}">
@@ -88,6 +90,8 @@
   <input type="hidden" name="delete_user_id" value="{{ searched_user['id'] }}">
   <button type="submit" onclick="return confirm('정말로 삭제하시겠습니까?')">삭제</button>
 </form>
+{% endif %}
+
 <h4>등록한 상품</h4>
 <ul>
   {% for product in searched_products %}

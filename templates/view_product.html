@@ -6,6 +6,13 @@
 <p>설명: {{ product['description'] }}</p>
 <p>판매자: {{ seller['username'] }}</p>
 
+<!-- 구매 버튼 -->
+{% if not is_owner %}
+<form action="{{ url_for('purchase', product_id=product['id']) }}" method="get">
+  <button type="submit" class="btn btn-primary">구매하기</button>
+</form>
+{% endif %}
+
 {% if is_owner %}
 <hr>
 <h3>상품 수정</h3>
