@@ -2,15 +2,10 @@
 
 ## Tiny Secondhand Shopping Platform.
 
-You should add some functions and complete the security requirements.
-
-## requirements
-
-if you don't have a miniconda(or anaconda), you can install it on this url. - https://docs.anaconda.com/free/miniconda/index.html
 
 ```
 git clone https://github.com/f3s123/secure-coding
-conda env create -f enviroments.yaml
+pip install -r requirements.txt
 ```
 
 ## usage
@@ -21,9 +16,12 @@ run the server process.
 python app.py
 ```
 
-if you want to test on external machine, you can utilize the ngrok to forwarding the url.
-```
-# optional
-sudo snap install ngrok
-ngrok http 5000
-```
+### Login
+
+- 관리자 계정:  
+  **ID**: `123`  
+  **PW**: `123`
+
+- 일반 유저 계정:  
+  **ID**: `qwer`  
+  **PW**: `qwer11!!`
